@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
+const fs = require('fs');
 require('dotenv').config({ path: '.env.local' });
 
 const supabase = createClient(
@@ -38,6 +39,14 @@ async function ingest(text, sourceTitle) {
   }
 }
 
-// Test run — replace this with a real paragraph to test
-const sampleText = `Steve Jobs (1955–2011) was an American inventor and business leader who co-founded, left, and returned to Apple Inc., while also shaping the animation studio Pixar. He helped change modern technology through the creation of famous devices like the iPhone, iPod, and Macintosh computer.`;
-ingest(sampleText, 'test-source').then(() => console.log('Done'));
+// Read file path and source title from command-line arguments
+const filePath = process.argv[2];
+const sourceTitle = process.argv[3] || 'untitled';
+
+if (!filePath) {
+  console.error('Usage: node scripts/ingest.js <file-path> "<source-title>"');
+  process.exit(1);
+}
+
+const text = fs.readFileSync(filePath, 'utf-8');
+ingest(text, sourceTitle).then(() => console.log('Done'));

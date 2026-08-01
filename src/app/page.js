@@ -29,7 +29,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: 600, margin: '80px auto', padding: 20, fontFamily: 'sans-serif' }}>
-      <h1 style={{ fontSize: 24, marginBottom: 20 }}>Ask the Assistant</h1>
+      <h1 style={{ fontSize: 24, marginBottom: 20 }}>Hi Simon</h1>
       <textarea
         value={question}
         onChange={(e) => setQuestion(e.target.value)}
