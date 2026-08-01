@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import { CohereClient } from 'cohere-ai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,6 +9,7 @@ const supabase = createClient(
 );
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const cohere = new CohereClient({ token: process.env.COHERE_API_KEY });
 
 async function generateQueryVariants(question) {
   const response = await anthropic.messages.create({
@@ -22,7 +24,7 @@ async function generateQueryVariants(question) {
   });
   const text = response.content[0].text;
   const variants = text.split('\n').map((q) => q.trim()).filter(Boolean);
-  return [question, ...variants]; // include original + variants
+  return [question, ...variants];
 }
 
 async function searchChunks(query) {
@@ -35,7 +37,7 @@ async function searchChunks(query) {
   const { data, error } = await supabase.rpc('match_documents', {
     query_embedding: embedding,
     match_threshold: 0.5,
-    match_count: 3,
+    match_count: 5,
   });
 
   if (error) {
@@ -45,6 +47,19 @@ async function searchChunks(query) {
   return data || [];
 }
 
+async function rerankChunks(question, chunks) {
+  if (chunks.length === 0) return [];
+
+  const rerankResponse = await cohere.rerank({
+    model: 'rerank-english-v3.0',
+    query: question,
+    documents: chunks.map((c) => c.content),
+    topN: 5,
+  });
+
+  return rerankResponse.results.map((r) => chunks[r.index]);
+}
+
 export async function POST(request) {
   const { question } = await request.json();
 
@@ -52,13 +67,9 @@ export async function POST(request) {
     return Response.json({ error: 'No question provided' }, { status: 400 });
   }
 
-  // Generate multiple query variants
   const queryVariants = await generateQueryVariants(question);
-
-  // Search with all variants
   const allResults = await Promise.all(queryVariants.map((q) => searchChunks(q)));
 
-  // Flatten and deduplicate by content
   const seen = new Set();
   const combinedChunks = [];
   for (const results of allResults) {
@@ -74,7 +85,10 @@ export async function POST(request) {
     return Response.json({ answer: "I don't have information on that yet." });
   }
 
-  const context = combinedChunks.map((c) => c.content).join('\n\n');
+  // Rerank combined results using the original question
+  const rerankedChunks = await rerankChunks(question, combinedChunks);
+
+  const context = rerankedChunks.map((c) => c.content).join('\n\n');
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-5',
